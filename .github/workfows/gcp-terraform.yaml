@@ -1,0 +1,49 @@
+name: GCP Workload Identity Federation - Terraform
+
+on:
+  push:
+    branches:
+      - main  # Trigger the pipeline on pushes to the 'main' branch
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write  # Allow the job to generate an OIDC token
+      contents: read  # To allow access to the repository
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v1
+      with:
+        terraform_version: 1.3.5
+
+    - name: Authenticate to GCP using Workload Identity Federation (WIF)
+      env:
+        GOOGLE_PROJECT_ID: "intense-elysium-446714-g4"
+        GOOGLE_WORKLOAD_IDENTITY_POOL: "terraform-pool"
+        GOOGLE_WORKLOAD_IDENTITY_PROVIDER: "github-provider"
+      run: |
+        # Get OIDC token for authentication
+        echo "Authenticating with GCP using Workload Identity Federation..."
+        
+        gcloud auth login --cred-file=$(gcloud iam workload-identity-federation get-credentials \
+          --project $GOOGLE_PROJECT_ID \
+          --workload-identity-pool $GOOGLE_WORKLOAD_IDENTITY_POOL \
+          --provider $GOOGLE_WORKLOAD_IDENTITY_PROVIDER \
+          --audiences https://iam.googleapis.com)
+
+    - name: Set Terraform Variables
+      run: |
+        echo "GOOGLE_PROJECT_ID=intense-elysium-446714-g4" >> $GITHUB_ENV
+        echo "GOOGLE_CREDENTIALS_PATH=$HOME/.config/gcloud/credentials.json" >> $GITHUB_ENV
+
+    - name: Initialize Terraform
+      run: terraform init
+
+    - name: Apply Terraform Configuration
+      run: terraform apply -auto-approve
